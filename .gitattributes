@@ -1,0 +1,3 @@
+# Store every text file with LF endings. A test .out file saved with Windows
+# CRLF endings would never match the program's output on CI.
+* text=auto eol=lf

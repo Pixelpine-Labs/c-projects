@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    # "edited" re-runs CI when the description changes, so fixing a missing
+    # "Closes #N" turns the check green without an empty commit.
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # This name is the required status check in the main-branch ruleset.
+    # Renaming it silently unblocks merging, so change both together.
+    name: build-and-test
+    # Same Ubuntu release as Ticket #1, so gcc and clang-format match the
+    # versions on the developer laptop and "works on my machine" holds here.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check the PR links its ticket
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$PR_BODY" | grep -Eiq '\b(close[sd]?|fix(e[sd])?|resolve[sd]?) #[0-9]+\b'; then
+            echo "::error::The PR description must link its ticket, for example 'Closes #2'. Edit the description on GitHub and CI re-runs by itself."
+            exit 1
+          fi
+
+      # v5 runs on Node 24; the Node 20 based v4 is being retired by GitHub.
+      - uses: actions/checkout@v5
+
+      - name: Install valgrind and clang-format
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends valgrind clang-format
+
+      # Cheap check first: a formatting miss fails in seconds instead of
+      # after a full build and test run.
+      - name: Check formatting
+        run: make format-check
+
+      - name: Build and test
+        run: make test
